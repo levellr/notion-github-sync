@@ -1,7 +1,7 @@
 /* ================================================================================
 
 	notion-github-sync.
-  
+
   Glitch example: https://glitch.com/edit/#!/notion-github-sync
   Find the official Notion API client @ https://github.com/makenotion/notion-sdk-js/
 
@@ -108,27 +108,50 @@ async function getIssuesFromNotionDatabase() {
  * @returns {Promise<Array<{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>>}
  */
 async function getGitHubIssuesForRepository() {
-  const issues = []
+  console.log("Starting to fetch issues from GitHub...");
+  const issues = [];
   const iterator = octokit.paginate.iterator(octokit.rest.issues.listForRepo, {
     owner: process.env.GITHUB_REPO_OWNER,
     repo: process.env.GITHUB_REPO_NAME,
     state: "all",
     per_page: 100,
-  })
+  });
+
+  console.log("Processing paginated results...");
   for await (const { data } of iterator) {
+    console.log(`Processing batch of ${data.length} issues...`);
     for (const issue of data) {
+      console.log(`Processing issue #${issue.number}: ${issue.title}`);
       if (!issue.pull_request) {
-        issues.push({
-          number: issue.number,
-          title: issue.title,
-          state: issue.state,
-          comment_count: issue.comments,
-          url: issue.html_url,
-        })
+        // Fetch labels for the current issue using the listLabelsOnIssue method
+        const labelsResponse = await octokit.rest.issues.listLabelsOnIssue({
+          owner: process.env.GITHUB_REPO_OWNER,
+          repo: process.env.GITHUB_REPO_NAME,
+          issue_number: issue.number,
+        }).catch(error => console.error(`Error fetching labels for issue #${issue.number}:`, error));
+
+        // Check if labelsResponse is valid before proceeding
+        if (labelsResponse) {
+          const labels = labelsResponse.data.map(label => label.name);
+          console.log(`Fetched labels for issue #${issue.number}:`, labels);
+
+          issues.push({
+            number: issue.number,
+            title: issue.title,
+            state: issue.state,
+            comment_count: issue.comments,
+            url: issue.html_url,
+            labels: labels,
+          });
+        } else {
+          console.log(`Skipping label fetching for issue #${issue.number} due to error.`);
+        }
       }
     }
   }
-  return issues
+
+  console.log(`Finished fetching issues from GitHub. Total issues fetched: ${issues.length}`);
+  return issues;
 }
 
 /**
@@ -184,21 +207,41 @@ async function createPages(pagesToCreate) {
  *
  * https://developers.notion.com/reference/patch-page
  *
- * @param {Array<{ pageId: string, number: number, title: string, state: "open" | "closed", comment_count: number, url: string }>} pagesToUpdate
+ * @param {Array<{ pageId: string, number: number, title: string, state: "open" | "closed", comment_count: number, url: string, labels: string[] }>} pagesToUpdate
  */
 async function updatePages(pagesToUpdate) {
-  const pagesToUpdateChunks = _.chunk(pagesToUpdate, OPERATION_BATCH_SIZE)
+  const pagesToUpdateChunks = _.chunk(pagesToUpdate, OPERATION_BATCH_SIZE);
+
   for (const pagesToUpdateBatch of pagesToUpdateChunks) {
-    await Promise.all(
-      pagesToUpdateBatch.map(({ pageId, ...issue }) =>
-        notion.pages.update({
-          page_id: pageId,
-          properties: getPropertiesFromIssue(issue),
-        })
-      )
-    )
-    console.log(`Completed batch size: ${pagesToUpdateBatch.length}`)
+    await Promise.all(pagesToUpdateBatch.map(async ({ pageId, ...issue }) => {
+      await updatePageWithRetry(pageId, getPropertiesFromIssue(issue));
+    }));
+    console.log(`Completed batch size: ${pagesToUpdateBatch.length}`);
   }
+}
+
+/**
+ * Attempts to update a page with retry logic on conflict error.
+ *
+ * @param {string} pageId
+ * @param {Object} properties
+ * @param {number} [retries=3]
+ */
+async function updatePageWithRetry(pageId, properties, retries = 3) {
+ try {
+   await notion.pages.update({
+     page_id: pageId,
+     properties: properties,
+   });
+ } catch (error) {
+   if (error.code === 'conflict_error' && retries > 0) {
+     console.log(`Conflict error for page ${pageId}. Retrying... ${retries} retries left.`);
+     await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for 1 second before retrying
+     await updatePageWithRetry(pageId, properties, retries - 1);
+   } else {
+     throw error;
+   }
+ }
 }
 
 //*========================================================================
@@ -208,10 +251,10 @@ async function updatePages(pagesToUpdate) {
 /**
  * Returns the GitHub issue to conform to this database's schema properties.
  *
- * @param {{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string }} issue
+ * @param {{ number: number, title: string, state: "open" | "closed", comment_count: number, url: string, labels: string[] }} issue
  */
 function getPropertiesFromIssue(issue) {
-  const { title, number, state, comment_count, url } = issue
+  const { title, number, state, comment_count, url, labels } = issue;
   return {
     Name: {
       title: [{ type: "text", text: { content: title } }],
@@ -228,5 +271,8 @@ function getPropertiesFromIssue(issue) {
     "Issue URL": {
       url,
     },
-  }
+    "Labels": {
+      multi_select: labels.map(label => ({ name: label })),
+    },
+  };
 }
