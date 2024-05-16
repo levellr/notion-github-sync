@@ -52,7 +52,13 @@ async function syncNotionDatabaseWithGitHub() {
 
   // Create pages for new issues.
   console.log(`\n${pagesToCreate.length} new issues to add to Notion.`)
-  await createPages(pagesToCreate)
+  for (const page of pagesToCreate) {
+    try {
+      await createPages([page])
+    } catch (error) {
+      console.error(`Error creating page for issue #${page.number}:`, error)
+    }
+  }
 
   // Updates pages for existing issues.
   console.log(`\n${pagesToUpdate.length} issues to update in Notion.`)
@@ -271,7 +277,7 @@ function getPropertiesFromIssue(issue) {
     "Issue URL": {
       url,
     },
-    "Labels": {
+    "Type": {
       multi_select: labels.map(label => ({ name: label })),
     },
   };
