@@ -13,7 +13,7 @@ const { Octokit } = require("octokit")
 const _ = require("lodash")
 
 dotenv.config()
-const octokit = new Octokit({ auth: process.env.GITHUB_KEY })
+const octokit = new Octokit({ auth: process.env.GH_KEY })
 const notion = new Client({ auth: process.env.NOTION_KEY })
 
 const databaseId = process.env.NOTION_DATABASE_ID
@@ -117,8 +117,8 @@ async function getGitHubIssuesForRepository() {
   console.log("Starting to fetch issues from GitHub...");
   const issues = [];
   const iterator = octokit.paginate.iterator(octokit.rest.issues.listForRepo, {
-    owner: process.env.GITHUB_REPO_OWNER,
-    repo: process.env.GITHUB_REPO_NAME,
+    owner: process.env.GH_REPO_OWNER,
+    repo: process.env.GH_REPO_NAME,
     state: "all",
     per_page: 100,
   });
@@ -131,8 +131,8 @@ async function getGitHubIssuesForRepository() {
       if (!issue.pull_request) {
         // Fetch labels for the current issue using the listLabelsOnIssue method
         const labelsResponse = await octokit.rest.issues.listLabelsOnIssue({
-          owner: process.env.GITHUB_REPO_OWNER,
-          repo: process.env.GITHUB_REPO_NAME,
+          owner: process.env.GH_REPO_OWNER,
+          repo: process.env.GH_REPO_NAME,
           issue_number: issue.number,
         }).catch(error => console.error(`Error fetching labels for issue #${issue.number}:`, error));
 
