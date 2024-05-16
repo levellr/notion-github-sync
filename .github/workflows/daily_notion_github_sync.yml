@@ -30,4 +30,4 @@ jobs:
         NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
         GH_REPO_OWNER: ${{ secrets.GH_REPO_OWNER }}
         GH_REPO_NAME: ${{ secrets.GH_REPO_NAME }}
-      run: node examples/notion-github-sync/index.js
+      run: cd examples/notion-github-sync/ && npm i && node index.js
