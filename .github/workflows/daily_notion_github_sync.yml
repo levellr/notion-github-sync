@@ -1,0 +1,32 @@
+name: Daily GitHub-Notion Sync
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v2
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: '20.12'
+
+    - name: Install dependencies
+      run: npm i
+
+    - name: Build project
+      run: npm run build
+
+    - name: Run script
+      env:
+        GH_KEY: ${{ secrets.GH_KEY }}
+        NOTION_KEY: ${{ secrets.NOTION_KEY }}
+        NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+        GH_REPO_OWNER: ${{ secrets.GH_REPO_OWNER }}
+        GH_REPO_NAME: ${{ secrets.GH_REPO_NAME }}
+      run: node examples/github-notion-sync/index.js
